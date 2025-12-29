@@ -1,0 +1,65 @@
+# Apache Configuration for Twilio Lead Calling System
+
+# Prevent directory listing
+Options -Indexes
+
+# Enable RewriteEngine
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /twilio/
+</IfModule>
+
+# Protect sensitive files
+<FilesMatch "^(\.env|composer\.json|composer\.lock|bootstrap\.php)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Protect config directory
+<DirectoryMatch "^.*/config/">
+    Order allow,deny
+    Deny from all
+</DirectoryMatch>
+
+# Protect application directory
+<DirectoryMatch "^.*/application/">
+    Order allow,deny
+    Deny from all
+</DirectoryMatch>
+
+# Protect scripts directory
+<DirectoryMatch "^.*/scripts/">
+    Order allow,deny
+    Deny from all
+</DirectoryMatch>
+
+# Allow access to public directory
+<DirectoryMatch "^.*/public/">
+    Order allow,deny
+    Allow from all
+</DirectoryMatch>
+
+# Allow access to webhooks
+<DirectoryMatch "^.*/webhooks/">
+    Order allow,deny
+    Allow from all
+</DirectoryMatch>
+
+# Allow access to handlers
+<DirectoryMatch "^.*/(agent|client)/handlers/">
+    Order allow,deny
+    Allow from all
+</DirectoryMatch>
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Set proper MIME types
+<IfModule mod_mime.c>
+    AddType application/json .json
+    AddType application/xml .xml
+</IfModule>
