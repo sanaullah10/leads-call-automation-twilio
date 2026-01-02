@@ -99,7 +99,7 @@ class LeadStatusSetup {
     /**
      * Add status if it doesn't exist
      */
-    private function addStatus($statusData) {
+    public function addStatus($statusData) {
         $sql = "SELECT id FROM tblleads_status WHERE name = ?";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([$statusData['name']]);
@@ -114,11 +114,13 @@ class LeadStatusSetup {
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             $statusData['name'],
-            $statusData['statusorder'],
-            $statusData['color']
+            $statusData['statusorder'] ?? null,
+            $statusData['color'] ?? null
         ]);
-        
+
         echo "  ✓ Created status: {$statusData['name']}\n";
+        
+        return $this->pdo->lastInsertId();
     }
     
     /**

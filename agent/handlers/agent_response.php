@@ -7,7 +7,7 @@ require_once __DIR__ . '/../../bootstrap.php';
 
 use Twilio\TwiML\VoiceResponse;
 
-$callSessionId = $_POST['call_session_id'] ?? null;
+$callSessionId = $_POST['call_session_id']?? $_GET['call_session_id'] ?? null;
 $digit = $_POST['Digits'] ?? null;
 
 if (!$callSessionId) {
@@ -23,8 +23,28 @@ try {
     if ($digit === '1') {
         // Agent accepted
         $orchestrator->onAgentAccepted($callSessionId);
+
+        // Fetch session to determine conference id
+        $sql = "SELECT lead_id FROM tblcall_sessions WHERE id = ? LIMIT 1";
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute([$callSessionId]);
+        $session = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        // Default to a generic room if session not found
+        $conferenceId = $session && isset($session['lead_id'])
+            ? 'lead_' . $session['lead_id']
+            : 'lead_unknown';
+
+        // Move agent into the conference immediately
         $response->say("Thank you. Connecting you with the client now.", ['voice' => 'alice']);
-        $response->play(); // Will be played when client connects
+        $dial = $response->dial();
+        $dial->conference($conferenceId, [
+            'startConferenceOnEnter' => true,
+            'endConferenceOnExit' => true,
+            'record' => 'record-from-start',
+            'statusCallback' => env('APP_URL') . '/twilio/webhooks/call_status_webhook.php',
+            'statusCallbackMethod' => 'POST'
+        ]);
         
     } else if ($digit === '2') {
         // Agent rejected

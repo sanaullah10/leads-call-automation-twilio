@@ -27,11 +27,12 @@ class LeadFetcher {
             // Get status IDs
             $newStatusId = LeadStatusSetup::getStatusId($this->pdo, 'New');
             $pendingStatusId = LeadStatusSetup::getStatusId($this->pdo, 'Pending');
+            $pendingStatusId = LeadStatusSetup::getStatusId($this->pdo, 'to be contacted');
             echo "\n";
 
             // $dateadded today
 
-            $dateadded = date('Y-m-d H:i:s', strtotime('today'));
+            $dateadded = date('Y-m-d H:i:s', strtotime('-24 hours'));
 
             // Build the query
             $sql = "SELECT 
@@ -73,7 +74,7 @@ class LeadFetcher {
      */
     public function processLeads() {
         $leads = $this->fetchPendingLeads(10);
-        print_r($leads); die;// --- DEBUG ---
+        // print_r($leads); die;// --- DEBUG ---
         if (empty($leads)) {
             $this->log("No pending leads to process");
             return ['success' => true, 'processed' => 0];

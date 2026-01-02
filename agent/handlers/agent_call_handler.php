@@ -42,20 +42,19 @@ try {
     // Greeting message
     $response->say(
         "You have an incoming call from {$session['lead_name']} regarding {$session['lead_name']}.",
-        ['voice' => 'alice']
     );
     
     // Gather user input (press 1 to accept, 2 to reject)
     $gather = $response->gather(
         [
             'numDigits' => 1,
-            'action' => env('APP_URL') . '/agent/handlers/agent_response.php',
+            'action' => env('APP_URL') . '/agent/handlers/agent_response.php?call_session_id=' . $callSessionId,
             'method' => 'POST',
             'timeout' => 30
         ]
     );
     
-    $gather->say("Press 1 to accept this call, or press 2 to reject.", ['voice' => 'alice']);
+    $gather->say("Press 1 to accept this call, or press 2 to reject.");
     
     // Fallback if no input
     $response->redirect(
@@ -69,7 +68,7 @@ try {
 } catch (Exception $e) {
     error_log("Error in agent_call_handler: " . $e->getMessage());
     $response = new VoiceResponse();
-    $response->say("Sorry, there was an error processing your call.", ['voice' => 'alice']);
+    $response->say("Sorry, there was an error processing your call.");
     $response->hangup();
     
     header('Content-Type: application/xml');

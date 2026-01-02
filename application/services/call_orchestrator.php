@@ -8,6 +8,7 @@
  */
 
 // This file is loaded via bootstrap.php
+require_once __DIR__ . '/../../application/core/database_setup.php';
 
 use Twilio\Rest\Client as TwilioClient;
 use Twilio\TwiML\VoiceResponse;
@@ -48,7 +49,7 @@ class CallOrchestrator {
             
             // Get agent details
             $agent = $this->availabilityChecker->getAgentDetails($lead['assigned']);
-            
+
             if (!$agent || !$agent['phonenumber']) {
                 $this->updateLeadStatus($lead['id'], 'Agent Unavailable');
                 $this->log("No valid phone number for agent {$lead['assigned']}");
@@ -73,8 +74,11 @@ class CallOrchestrator {
                     $this->twilioPhoneNumber,        // From: Twilio number
                     [
                         'url' => $callUrl,
+                        // 'statusCallback' => env('APP_URL') . '/twilio/webhooks/send_post_call_sms.php?lead_id=' . $lead['id'],
+                        // 'statusCallbackEvent' => ['completed'],
+                        // 'statusCallbackMethod' => 'POST'
                         'method' => 'GET',
-                        'record' => true,
+                        'record' => false,
                         'timeout' => 30,
                         'statusCallback' => env('APP_URL') . '/twilio/webhooks/call_status_webhook.php',
                         'statusCallbackMethod' => 'POST'
@@ -244,9 +248,12 @@ class CallOrchestrator {
 
             if (!$statusId) {
                 // TODO create new status if not found
+                $statusId = (new LeadStatusSetup($this->pdo))->addStatus([
+                    'name' => $statusName
+                ]);
 
-                $this->log("✗ Status '$statusName' not found");
-                return false;
+                // $this->log("✗ Status '$statusName' not found");
+                // return false;
             }
             
             $sql = "UPDATE tblleads 
