@@ -105,7 +105,7 @@ class LeadStatusSetup {
         $stmt->execute([$statusData['name']]);
         
         if ($stmt->rowCount() > 0) {
-            echo "  • Status '{$statusData['name']}' already exists\n";
+            // echo "  • Status '{$statusData['name']}' already exists\n";
             return;
         }
         
@@ -118,7 +118,7 @@ class LeadStatusSetup {
             $statusData['color'] ?? null
         ]);
 
-        echo "  ✓ Created status: {$statusData['name']}\n";
+        // echo "  ✓ Created status: {$statusData['name']}\n";
         
         return $this->pdo->lastInsertId();
     }

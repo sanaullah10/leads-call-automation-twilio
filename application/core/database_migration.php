@@ -57,39 +57,6 @@ class DatabaseMigration {
     }
     
     /**
-     * Create call_logs table (for detailed call history)
-     */
-    public function createCallLogsTable() {
-        try {
-            $sql = "CREATE TABLE IF NOT EXISTS `tblcall_logs` (
-                `id` int(11) NOT NULL AUTO_INCREMENT,
-                `call_session_id` int(11) NOT NULL,
-                `event_type` varchar(50) COLLATE utf8mb4_unicode_ci,
-                `event_description` text COLLATE utf8mb4_unicode_ci,
-                `twilio_data` longtext COLLATE utf8mb4_unicode_ci,
-                `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (`id`),
-                KEY `idx_call_session_id` (`call_session_id`),
-                KEY `idx_event_type` (`event_type`),
-                KEY `idx_created_at` (`created_at`),
-                FOREIGN KEY (`call_session_id`) REFERENCES `tblcall_sessions` (`id`) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
-            
-            $this->pdo->exec($sql);
-            echo "✓ tblcall_logs table created\n";
-            return true;
-            
-        } catch (Exception $e) {
-            if (strpos($e->getMessage(), 'already exists') !== false) {
-                echo "  • tblcall_logs table already exists\n";
-                return true;
-            }
-            echo "✗ Error creating tblcall_logs: " . $e->getMessage() . "\n";
-            return false;
-        }
-    }
-    
-    /**
      * Run all migrations
      */
     public function migrate() {
@@ -98,7 +65,6 @@ class DatabaseMigration {
         echo "========================================\n\n";
         
         $this->createCallSessionsTable();
-        $this->createCallLogsTable();
         
         echo "\n✓ Migration completed!\n";
     }

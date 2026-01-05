@@ -27,7 +27,9 @@ class LeadFetcher {
             // Get status IDs
             $newStatusId = LeadStatusSetup::getStatusId($this->pdo, 'New');
             $pendingStatusId = LeadStatusSetup::getStatusId($this->pdo, 'Pending');
-            $pendingStatusId = LeadStatusSetup::getStatusId($this->pdo, 'to be contacted');
+            $clientBusyStatusId = LeadStatusSetup::getStatusId($this->pdo, 'Client Busy');
+            $clientNoAnswerStatusId = LeadStatusSetup::getStatusId($this->pdo, 'Client No-Answer');
+            // $pendingStatusId = LeadStatusSetup::getStatusId($this->pdo, 'to be contacted');
             echo "\n";
 
             // $dateadded today
@@ -35,6 +37,7 @@ class LeadFetcher {
             $dateadded = date('Y-m-d H:i:s', strtotime('-24 hours'));
 
             // Build the query
+            // AND l.lastcontact IS NULL
             $sql = "SELECT 
                         l.id,
                         l.name,
@@ -50,17 +53,16 @@ class LeadFetcher {
                         a.firstname as agent_name
                     FROM tblleads l
                     LEFT JOIN tblstaff a ON a.staffid = l.assigned
-                    WHERE l.status IN (?, ?)
+                    WHERE l.status IN (?, ?, ?, ?)
                     AND l.assigned > 0
                     AND l.phonenumber IS NOT NULL
                     AND l.phonenumber != ''
-                    AND l.lastcontact IS NULL
                     AND l.dateadded >= ?
                     ORDER BY l.dateadded ASC
                     LIMIT " . intval($limit);
             
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([$newStatusId, $pendingStatusId, $dateadded]);
+            $stmt->execute([$newStatusId, $pendingStatusId, $clientBusyStatusId, $clientNoAnswerStatusId, $dateadded]);
             
             return $stmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (Exception $e) {
@@ -73,7 +75,9 @@ class LeadFetcher {
      * Process leads - initiate calling
      */
     public function processLeads() {
-        $leads = $this->fetchPendingLeads(10);
+        $limit = env('MAX_LEADS_PER_RUN', 10);
+       
+        $leads = $this->fetchPendingLeads($limit);
         // print_r($leads); die;// --- DEBUG ---
         if (empty($leads)) {
             $this->log("No pending leads to process");
@@ -99,6 +103,8 @@ class LeadFetcher {
                 $failed++;
                 $this->log("✗ Error processing lead {$lead['id']}: " . $e->getMessage());
             }
+
+            sleep(10); // Brief pause between calls
         }
         
         return [
@@ -137,8 +143,8 @@ if (php_sapi_name() === 'cli' || php_sapi_name() === 'cli-server') {
     
     try {
         // Initialize database setup first
-        $setup = new LeadStatusSetup($pdo);
-        $setup->setupStatuses();
+        // $setup = new LeadStatusSetup($pdo);
+        // $setup->setupStatuses();
         
         echo "\n";
         

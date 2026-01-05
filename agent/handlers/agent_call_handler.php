@@ -19,8 +19,8 @@ if (!$callSessionId) {
 try {
     $orchestrator = new CallOrchestrator($pdo);
     
-    // Get call session and lead info
-    $sql = "SELECT cs.*, l.name as lead_name, s.firstname, s.lastname 
+    // Get call session and lead info including client phone number
+    $sql = "SELECT cs.*, l.name as lead_name, l.phonenumber as client_phone, s.firstname, s.lastname 
             FROM tblcall_sessions cs
             JOIN tblleads l ON l.id = cs.lead_id
             JOIN tblstaff s ON s.staffid = cs.agent_id
@@ -39,27 +39,27 @@ try {
     // Generate TwiML response
     $response = new VoiceResponse();
     
-    // Greeting message
+    // Greeting message and automatic connection
     $response->say(
-        "You have an incoming call from {$session['lead_name']} regarding {$session['lead_name']}.",
+        "Connecting you with the client now. Please wait.",
+        ['voice' => 'alice']
     );
     
-    // Gather user input (press 1 to accept, 2 to reject)
-    $gather = $response->gather(
-        [
-            'numDigits' => 1,
-            'action' => env('APP_URL') . '/agent/handlers/agent_response.php?call_session_id=' . $callSessionId,
-            'method' => 'POST',
-            'timeout' => 30
-        ]
-    );
+    // Use Dial with Number to bridge agent directly to client (outbound bridging)
     
-    $gather->say("Press 1 to accept this call, or press 2 to reject.");
+    $dial = $response->dial('', ['hangupOnStar' => true]);
+
+    // $dial = $response->dial('', [
+    //     'action' => env('APP_URL') . '/twilio/webhooks/call_status_webhook.php',
+    //     'method' => 'POST',
+    // ]);
     
-    // Fallback if no input
-    $response->redirect(
-        env('APP_URL') . '/agent/handlers/agent_call_handler.php?call_session_id=' . $callSessionId
-    );
+    // Dial the client's number directly - creates a bridge between agent and client
+    $dial->number($session['client_phone'], [
+        'statusCallback' => env('APP_URL') . '/twilio/webhooks/call_status_webhook.php?call_session_id=' . $callSessionId . '&leg=client',
+        'statusCallbackEvent' => 'completed',
+        'statusCallbackMethod' => 'POST'
+    ]);
     
     // Set Twilio response content type
     header('Content-Type: application/xml');

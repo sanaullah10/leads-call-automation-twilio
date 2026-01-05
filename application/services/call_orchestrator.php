@@ -7,8 +7,9 @@
  * 4. Update lead status throughout process
  */
 
-// This file is loaded via bootstrap.php
 require_once __DIR__ . '/../../application/core/database_setup.php';
+
+// This file is loaded via bootstrap.php
 
 use Twilio\Rest\Client as TwilioClient;
 use Twilio\TwiML\VoiceResponse;
@@ -42,7 +43,7 @@ class CallOrchestrator {
         try {
             // Check if agent is available
             if (!$this->availabilityChecker->isAgentAvailable($lead['assigned'])) {
-                $this->updateLeadStatus($lead['id'], 'Agent Unavailable');
+                // $this->updateLeadStatus($lead['id'], 'Agent Unavailable');
                 $this->log("Agent {$lead['assigned']} is unavailable for lead {$lead['id']}");
                 return false;
             }
@@ -51,7 +52,7 @@ class CallOrchestrator {
             $agent = $this->availabilityChecker->getAgentDetails($lead['assigned']);
 
             if (!$agent || !$agent['phonenumber']) {
-                $this->updateLeadStatus($lead['id'], 'Agent Unavailable');
+                // $this->updateLeadStatus($lead['id'], 'Agent Unavailable');
                 $this->log("No valid phone number for agent {$lead['assigned']}");
                 return false;
             }
@@ -74,14 +75,12 @@ class CallOrchestrator {
                     $this->twilioPhoneNumber,        // From: Twilio number
                     [
                         'url' => $callUrl,
-                        // 'statusCallback' => env('APP_URL') . '/twilio/webhooks/send_post_call_sms.php?lead_id=' . $lead['id'],
-                        // 'statusCallbackEvent' => ['completed'],
-                        // 'statusCallbackMethod' => 'POST'
-                        'method' => 'GET',
-                        'record' => false,
                         'timeout' => 30,
-                        'statusCallback' => env('APP_URL') . '/twilio/webhooks/call_status_webhook.php',
+                        'method' => 'GET',
+                        'statusCallback' => env('APP_URL') . '/twilio/webhooks/call_status_webhook.php?call_session_id=' . $callSessionId . '&leg=agent',
+                        'statusCallbackEvent' => 'completed',
                         'statusCallbackMethod' => 'POST'
+                        // 'record' => false,
                     ]
                 );
                 
@@ -150,78 +149,20 @@ class CallOrchestrator {
             return false;
         }
     }
-    
-    /**
-     * Handle agent acceptance of call
-     * This is called from agent_call_handler.php when agent presses 1
-     */
-    public function onAgentAccepted($callSessionId) {
-        try {
-            $session = $this->getCallSession($callSessionId);
-            if (!$session) return false;
+
+    public function updateLeadStatusBySession($sessionId, $statusName) {
+        $sql = "SELECT lead_id FROM tblcall_sessions WHERE id = ? LIMIT 1";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([$sessionId]);
+        $session = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($session) {
+            // If busy, we update lastcontact but keep it 'Pending' for next cron run
+            $this->updateLeadStatus($session['lead_id'], $statusName);
             
-            // Update session status
-            $this->updateCallSession($callSessionId, ['status' => 'agent_connected']);
-            
-            // Update lead status
-            $this->updateLeadStatus($session['lead_id'], 'Agent Connected');
-            
-            // Call the client
-            $this->callClient($session['lead_id'], $session['agent_id'], $callSessionId);
-            
-            $this->log("✓ Agent accepted call for lead {$session['lead_id']}");
-            return true;
-            
-        } catch (Exception $e) {
-            $this->log("✗ Error in onAgentAccepted: " . $e->getMessage());
-            return false;
-        }
-    }
-    
-    /**
-     * Call the client
-     */
-    private function callClient($leadId, $agentId, $callSessionId) {
-        try {
-            // Get lead info
-            $sql = "SELECT * FROM tblleads WHERE id = ? LIMIT 1";
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([$leadId]);
-            $lead = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$lead || !$lead['phonenumber']) {
-                $this->updateLeadStatus($leadId, 'Client Unavailable');
-                return false;
-            }
-            
-            // Update lead status
-            $this->updateLeadStatus($leadId, 'Calling Client');
-            
-            $callUrl = env('APP_URL') . '/client/handlers/client_call_handler.php?call_session_id=' . $callSessionId;
-            
-            $call = $this->twilio->calls->create(
-                $lead['phonenumber'],              // To: Client's phone
-                $this->twilioPhoneNumber,          // From: Twilio number
-                [
-                    'url' => $callUrl,
-                    'method' => 'GET',
-                    'record' => true,
-                    'timeout' => 30,
-                    'statusCallback' => env('APP_URL') . '/twilio/webhooks/call_status_webhook.php',
-                    'statusCallbackMethod' => 'POST'
-                ]
-            );
-            
-            // Store client call SID
-            $this->updateCallSession($callSessionId, ['client_call_sid' => $call->sid]);
-            
-            $this->log("✓ Calling client {$lead['name']} ({$lead['phonenumber']}) for lead {$leadId}");
-            return true;
-            
-        } catch (Exception $e) {
-            $this->updateLeadStatus($leadId, 'Call Failed');
-            $this->log("✗ Error calling client: " . $e->getMessage());
-            return false;
+            // Update the lastcontact to 'now' so lead_fetcher knows it was just tried
+            $updateTime = "UPDATE tblleads SET lastcontact = NOW() WHERE id = ?";
+            $this->pdo->prepare($updateTime)->execute([$session['lead_id']]);
         }
     }
     
@@ -244,10 +185,11 @@ class CallOrchestrator {
      */
     public function updateLeadStatus($leadId, $statusName) {
         try {
+            $this->log("Updating lead $leadId status to '$statusName'");
             $statusId = LeadStatusSetup::getStatusId($this->pdo, $statusName);
 
             if (!$statusId) {
-                // TODO create new status if not found
+                // create new status if not found
                 $statusId = (new LeadStatusSetup($this->pdo))->addStatus([
                     'name' => $statusName
                 ]);
@@ -255,11 +197,22 @@ class CallOrchestrator {
                 // $this->log("✗ Status '$statusName' not found");
                 // return false;
             }
+
+            if($statusName == 'Call Completed'){
+                // For 'Call Completed', also update lastcontact to now
+                $sql = "UPDATE tblleads 
+                        SET status = ?, 
+                            lastcontact = NOW(),
+                            last_status_change = NOW()
+                        WHERE id = ?";
+                
+                $stmt = $this->pdo->prepare($sql);
+                return $stmt->execute([$statusId, $leadId]);
+            }
             
             $sql = "UPDATE tblleads 
                     SET status = ?, 
-                        last_status_change = NOW(),
-                        lastcontact = COALESCE(lastcontact, NOW())
+                        last_status_change = NOW()
                     WHERE id = ?";
             
             $stmt = $this->pdo->prepare($sql);
