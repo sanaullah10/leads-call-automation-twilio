@@ -27,4 +27,3 @@ function require_app($path) {
 // require_app('core/database_setup.php');
 require_app('services/agent_availability.php');
 require_app('services/call_orchestrator.php');
-?>

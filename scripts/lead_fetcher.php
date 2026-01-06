@@ -25,8 +25,6 @@ class LeadFetcher {
     public function fetchPendingLeads($limit = 10) {
         try {
             // Get status IDs
-            $newStatusId = LeadStatusSetup::getStatusId($this->pdo, 'New');
-            $pendingStatusId = LeadStatusSetup::getStatusId($this->pdo, 'Pending');
 
             $callCompletedStatusId = LeadStatusSetup::getStatusId($this->pdo, 'Call Completed');
 
@@ -112,7 +110,7 @@ class LeadFetcher {
                     $notInClause
                     ORDER BY l.lastcontact ASC
                     LIMIT $limit";
-                    
+
             $stmtRetry = $this->pdo->prepare($sqlRetry);
             $stmtRetry->execute($params);
             $retryLeads = $stmtRetry->fetchAll(PDO::FETCH_ASSOC);
@@ -133,7 +131,7 @@ class LeadFetcher {
         $limit = env('MAX_LEADS_PER_RUN', 10);
        
         $leads = $this->fetchPendingLeads($limit);
-        print_r($leads); die;// --- DEBUG ---
+        // print_r($leads); die;// --- DEBUG ---
         if (empty($leads)) {
             $this->log("No pending leads to process");
             return ['success' => true, 'processed' => 0];

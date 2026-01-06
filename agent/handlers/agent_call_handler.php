@@ -8,6 +8,9 @@ require_once __DIR__ . '/../../bootstrap.php';
 
 use Twilio\TwiML\VoiceResponse;
 
+// Set Content-Type header first to prevent any output issues
+header('Content-Type: application/xml');
+
 $callSessionId = $_GET['call_session_id'] ?? null;
 
 if (!$callSessionId) {
@@ -38,10 +41,12 @@ try {
     
     // Generate TwiML response
     $response = new VoiceResponse();
+
+    $clientName = $session['lead_name'] ?? 'now';
     
     // Greeting message and automatic connection
     $response->say(
-        "Connecting you with the client now. Please wait.",
+        "Connecting you with the client {$clientName}. Please wait.",
         ['voice' => 'alice']
     );
     
@@ -55,8 +60,6 @@ try {
         'statusCallbackMethod' => 'POST'
     ]);
     
-    // Set Twilio response content type
-    header('Content-Type: application/xml');
     echo $response;
     
 } catch (Exception $e) {
@@ -65,7 +68,5 @@ try {
     $response->say("Sorry, there was an error processing your call.");
     $response->hangup();
     
-    header('Content-Type: application/xml');
     echo $response;
 }
-?>
