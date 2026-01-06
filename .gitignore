@@ -1,5 +1,6 @@
 # add .env
 .env
+.env.*
 # Composer dependencies
 /vendor/
 # Node modules
