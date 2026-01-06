@@ -23,6 +23,8 @@ if (!function_exists('env')) {
     }
 }
 
+date_default_timezone_set(env('timezone', 'UTC'));
+
 // Get database configuration with defaults
 $dbDsn = env('DB_DSN', 'mysql:host=localhost;dbname=perfex;charset=utf8mb4');
 $dbUser = env('DB_USER', 'root');

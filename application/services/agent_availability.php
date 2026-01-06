@@ -58,6 +58,29 @@ class AgentAvailabilityChecker {
             return false;
         }
     }
+
+    public function getNextAvailableAgent() {
+        try {
+            // get any staff has phone number and call_session status is completed
+            $sql = "SELECT s.staffid FROM tblstaff s
+                    WHERE s.phonenumber IS NOT NULL
+                    AND s.phonenumber != ''
+                    AND s.staffid NOT IN (
+                        SELECT agent_id FROM tblcall_sessions 
+                        WHERE status IN ('initiated', 'agent_ringing', 'agent_connected', 'client_ringing', 'client_connected')
+                    )
+                    LIMIT 1"; 
+            
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute();
+            
+            $agent = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $agent ? $agent['staffid'] : null;
+        } catch (Exception $e) {
+            error_log("Error checking agent availability by status: " . $e->getMessage());
+            return false;
+        }
+    }
     
     /**
      * Get agent details including phone number

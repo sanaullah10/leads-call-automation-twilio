@@ -42,29 +42,38 @@ class CallOrchestrator {
     public function initiateCall($lead) {
         try {
             // Check if agent is available
-            if (!$this->availabilityChecker->isAgentAvailable($lead['assigned'])) {
-                // $this->updateLeadStatus($lead['id'], 'Agent Unavailable');
-                $this->log("Agent {$lead['assigned']} is unavailable for lead {$lead['id']}");
-                return false;
+            if ($this->availabilityChecker->isAgentAvailable($lead['assigned'])) {
+                $agentId = $lead['assigned']; 
+            } else {
+                // get next available agent
+                $agentId = $this->availabilityChecker->getNextAvailableAgent();
+                if (!$agentId) {
+                    $this->updateLeadStatus($lead['id'], 'Agent Unavailable');
+                    $this->log("No available agents for lead {$lead['id']}");
+                    return false;
+                }
             }
+
             
             // Get agent details
-            $agent = $this->availabilityChecker->getAgentDetails($lead['assigned']);
+            $agent = $this->availabilityChecker->getAgentDetails($agentId);
 
             if (!$agent || !$agent['phonenumber']) {
                 // $this->updateLeadStatus($lead['id'], 'Agent Unavailable');
-                $this->log("No valid phone number for agent {$lead['assigned']}");
+                $this->log("✗ Agent details not found or no phone number for agent ID $agentId");
                 return false;
             }
             
             // Update lead status: Calling Agent
-            $this->updateLeadStatus($lead['id'], 'Calling Agent');
+            // $this->updateLeadStatus($lead['id'], 'Calling Agent');
 
             
+            // print_r($agent);die; // --- DEBUG --
             
             // Create call session record
             $callSessionId = $this->createCallSession($lead['id'], $agent['staffid']);
             
+
             // Make call to agent
             // The agent will receive options via IVR (press 1 to accept, 2 to reject)
             $callUrl = env('APP_URL') . '/agent/handlers/agent_call_handler.php?call_session_id=' . $callSessionId;
@@ -126,7 +135,8 @@ class CallOrchestrator {
     /**
      * Update call session
      */
-    private function updateCallSession($sessionId, $data) {
+    public function updateCallSession($sessionId, $data) {
+        $this->log("Updating call session $sessionId with data: " . json_encode($data));
         if (!$sessionId) return false;
         
         try {
@@ -183,7 +193,7 @@ class CallOrchestrator {
     /**
      * Update lead status
      */
-    public function updateLeadStatus($leadId, $statusName) {
+    public function updateLeadStatus($leadId, $statusName, $sessionId = null) {
         try {
             $this->log("Updating lead $leadId status to '$statusName'");
             $statusId = LeadStatusSetup::getStatusId($this->pdo, $statusName);
@@ -199,6 +209,14 @@ class CallOrchestrator {
             }
 
             if($statusName == 'Call Completed'){
+                if ($sessionId) {
+                    // update call session to completed
+                    $this->updateCallSession($sessionId, [
+                        'status' => 'completed',
+                        'ended_at' => date('Y-m-d H:i:s')
+                    ]);
+                }
+
                 // For 'Call Completed', also update lastcontact to now
                 $sql = "UPDATE tblleads 
                         SET status = ?, 

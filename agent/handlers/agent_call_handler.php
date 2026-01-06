@@ -46,14 +46,8 @@ try {
     );
     
     // Use Dial with Number to bridge agent directly to client (outbound bridging)
-    
     $dial = $response->dial('', ['hangupOnStar' => true]);
 
-    // $dial = $response->dial('', [
-    //     'action' => env('APP_URL') . '/twilio/webhooks/call_status_webhook.php',
-    //     'method' => 'POST',
-    // ]);
-    
     // Dial the client's number directly - creates a bridge between agent and client
     $dial->number($session['client_phone'], [
         'statusCallback' => env('APP_URL') . '/twilio/webhooks/call_status_webhook.php?call_session_id=' . $callSessionId . '&leg=client',

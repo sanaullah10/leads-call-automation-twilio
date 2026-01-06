@@ -27,18 +27,22 @@ class LeadFetcher {
             // Get status IDs
             $newStatusId = LeadStatusSetup::getStatusId($this->pdo, 'New');
             $pendingStatusId = LeadStatusSetup::getStatusId($this->pdo, 'Pending');
-            $clientBusyStatusId = LeadStatusSetup::getStatusId($this->pdo, 'Client Busy');
-            $clientNoAnswerStatusId = LeadStatusSetup::getStatusId($this->pdo, 'Client No-Answer');
-            // $pendingStatusId = LeadStatusSetup::getStatusId($this->pdo, 'to be contacted');
+
+            $callCompletedStatusId = LeadStatusSetup::getStatusId($this->pdo, 'Call Completed');
+
+            // Status X from .env
+            $retryStatusName = env('LEAD_RETRY_STATUS', 'Pending');
+            $retryStatusId = LeadStatusSetup::getStatusId($this->pdo, $retryStatusName);
             echo "\n";
 
             // $dateadded today
 
-            $dateadded = date('Y-m-d H:i:s', strtotime('-24 hours'));
+            $dateadded = "AND l.dateadded >= NOW() - INTERVAL 5 MINUTE";
+            // print_r($dateadded); die;// --- DEBUG ---
 
-            // Build the query
+            // --- QUERY A: 10 Latest Fresh Leads ---
             // AND l.lastcontact IS NULL
-            $sql = "SELECT 
+            $sqlFresh = "SELECT 
                         l.id,
                         l.name,
                         l.email,
@@ -53,18 +57,69 @@ class LeadFetcher {
                         a.firstname as agent_name
                     FROM tblleads l
                     LEFT JOIN tblstaff a ON a.staffid = l.assigned
-                    WHERE l.status IN (?, ?, ?, ?)
+                    WHERE l.status NOT IN (?)
+                    $dateadded
+                    AND l.assigned > 0
+                    AND l.lastcontact IS NULL
+                    AND l.phonenumber IS NOT NULL
+                    AND l.phonenumber != ''
+                    AND NOT EXISTS (SELECT 1 FROM tblcall_sessions cs WHERE cs.lead_id = l.id)
+                    ORDER BY l.dateadded DESC
+                    LIMIT 10";
+            
+            $stmtFresh = $this->pdo->prepare($sqlFresh);
+            $stmtFresh->execute([$callCompletedStatusId]);
+
+            $freshLeads = $stmtFresh->fetchAll(PDO::FETCH_ASSOC);
+
+            // Collect IDs to exclude from the next query
+            $freshIds = array_column($freshLeads, 'id');
+            
+
+            // Build placeholders for NOT IN clause if we have fresh leads
+            $notInClause = "";
+            $params = [$retryStatusId];
+            
+            if (!empty($freshIds)) {
+                $placeholders = implode(',', array_fill(0, count($freshIds), '?'));
+                $notInClause = " AND l.id NOT IN ($placeholders) ";
+                $params = array_merge($params, $freshIds);
+            }
+
+            // --- QUERY B: Leads with Status X (e.g., Pending) ---
+            $limit = count($freshLeads) > 5 ? 5 : 10;
+
+            $sqlRetry = "SELECT 
+                        l.id,
+                        l.name,
+                        l.email,
+                        l.phonenumber,
+                        l.company,
+                        l.assigned,
+                        l.status,
+                        l.dateadded,
+                        l.lastcontact,
+                        a.staffid as agent_id,
+                        a.phonenumber as agent_phone,
+                        a.firstname as agent_name
+                    FROM tblleads l
+                    LEFT JOIN tblstaff a ON a.staffid = l.assigned
+                    WHERE l.status = ?
+                    AND (l.lastcontact IS NULL OR l.lastcontact <= NOW() - INTERVAL 2 HOUR)
                     AND l.assigned > 0
                     AND l.phonenumber IS NOT NULL
                     AND l.phonenumber != ''
-                    AND l.dateadded >= ?
-                    ORDER BY l.dateadded ASC
-                    LIMIT " . intval($limit);
-            
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([$newStatusId, $pendingStatusId, $clientBusyStatusId, $clientNoAnswerStatusId, $dateadded]);
-            
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
+                    $notInClause
+                    ORDER BY l.lastcontact ASC
+                    LIMIT $limit";
+                    
+            $stmtRetry = $this->pdo->prepare($sqlRetry);
+            $stmtRetry->execute($params);
+            $retryLeads = $stmtRetry->fetchAll(PDO::FETCH_ASSOC);
+
+            return array_merge($freshLeads, $retryLeads);
+
+
         } catch (Exception $e) {
             error_log("Error fetching pending leads: " . $e->getMessage());
             return [];
@@ -78,7 +133,7 @@ class LeadFetcher {
         $limit = env('MAX_LEADS_PER_RUN', 10);
        
         $leads = $this->fetchPendingLeads($limit);
-        // print_r($leads); die;// --- DEBUG ---
+        print_r($leads); die;// --- DEBUG ---
         if (empty($leads)) {
             $this->log("No pending leads to process");
             return ['success' => true, 'processed' => 0];
@@ -142,10 +197,6 @@ if (php_sapi_name() === 'cli' || php_sapi_name() === 'cli-server') {
     echo "========================================\n\n";
     
     try {
-        // Initialize database setup first
-        // $setup = new LeadStatusSetup($pdo);
-        // $setup->setupStatuses();
-        
         echo "\n";
         
         $fetcher = new LeadFetcher($pdo);
